@@ -5,13 +5,13 @@
 ;; Author: Chen Bin <chenbin.sh@gmail.com>
 ;; URL: http://github.com/redguardtoo/cpputils-cmake
 ;; Keywords: CMake IntelliSense Flymake Flycheck
-;; Version: 0.5.2
+;; Version: 0.5.3
 
 ;; This file is not part of GNU Emacs.
 
 ;; This file is free software (GPLv3 License)
 
-;; Commentary:
+;;; Commentary:
 
 ;; Ths package provides `cppcm-reload-all', you can call
 ;; it IF AND ONLY IF you are editing C/C++ file.
@@ -26,28 +26,28 @@
 ;;   Step 1, run "cmake" to create out build directory
 ;;   Step 2, run "make" to compile SUCCESSFULLY in tbuild directory
 ;;
-;; BTW, you can "M-x cppcm-reload-all" anytime to re-scan the source,
-;; Check https://github.com/redguardtoo/cpputils-cmake/ for more tips
+;; BTW, you can "M-x cppcm-reload-all" anytime to re-scan the source.
+;; Check https://github.com/redguardtoo/cpputils-cmake/ for more tips.
 
 ;;; Code:
 
-(defcustom cppcm-proj-max-dir-level 16 "maximum level of the project directory tree"
+(defcustom cppcm-proj-max-dir-level 16 "Maximum level of the project directory tree."
   :type 'number
   :group 'cpputils-cmake)
 
-(defcustom cppcm-build-dirname "build" "The directory name of build directory"
+(defcustom cppcm-build-dirname "build" "The directory name of build directory."
   :type 'string
   :group 'cpputils-cmake)
 
 (defcustom cppcm-reload-all-hook nil
-  "hook after cppcm-reload-all is called. You can modify the global variables set up by cppcm-reload-all"
+  "Hook after `cppcm-reload-all' is called.  You can modify the global variables set up by `cppcm-reload-all'."
   :type 'hook
   :group 'cpputils-cmake)
 
 (defvar cppcm-get-executable-full-path-callback nil
   "User defined function to get correct path of executabe.
 Sample definition:
-(setq cppcm-get-executable-full-path-callback
+\(setq cppcm-get-executable-full-path-callback
       (lambda (path type tgt-name)
         (message \"cppcm-get-executable-full-path-callback called => %s %s %s\" path type tgt-name)
         ;; path is the supposed-to-be target's full path
@@ -66,22 +66,22 @@ Sample definition:
 (defvar cppcm-extra-preprocss-flags-from-user nil
   "Value example: (\"-I/usr/src/include\" \"-I./inc\" \"-DNDEBUG\").")
 
-(defvar cppcm-build-dir nil "The full path of build directory")
-(defvar cppcm-src-dir nil "The full path of root source directory")
-(defvar cppcm-include-dirs nil "Value example: (\"-I/usr/src/include\")")
-(defvar cppcm-preprocess-defines nil "Value example: (\"-DNDEBUG\" \"-D_WXGTK_\")")
+(defvar cppcm-build-dir nil "The full path of build directory.")
+(defvar cppcm-src-dir nil "The full path of root source directory.")
+(defvar cppcm-include-dirs nil "Value example: (\"-I/usr/src/include\").")
+(defvar cppcm-preprocess-defines nil "Value example: (\"-DNDEBUG\" \"-D_WXGTK_\").")
 
 (defvar cppcm-hash nil)
 (defconst cppcm-prog "cpputils-cmake")
-(defcustom cppcm-makefile-name "Makefile" "The filename for cppcm makefiles"
+(defcustom cppcm-makefile-name "Makefile" "The filename for cppcm makefiles."
   :type 'string
   :group 'cpputils-cmake)
 
 (defvar cppcm-cmake-target-regex
   "^\s*[^#]*\s*\\(add_executable\\|add_library\\)\s*(\s*\\([^\s]+\\)"
-  "Regex for matching a CMake target definition")
+  "Regex for matching a CMake target definition.")
 
-(defcustom cppcm-write-flymake-makefile t "Toggle cpputils-cmake writing Flymake Makefiles"
+(defcustom cppcm-write-flymake-makefile t "Toggle cpputils-cmake writing Flymake Makefiles."
   :type 'boolean
   :group 'cpputils-cmake)
 
@@ -100,25 +100,28 @@ For example:
   then you can run following commands.
 'M-x cppcm-compile'         => `cppcm-compile-in-current-exe-dir'
 'C-u M-x cppcm-compile'     => `compile'
-'C-u C-u M-x cppcm-compile' => `cppcm-compile-in-root-build-dir'.
-")
+'C-u C-u M-x cppcm-compile' => `cppcm-compile-in-root-build-dir'.")
 
-(defvar cppcm-debug nil "enable debug mode")
+(defvar cppcm-debug nil "Enable debug mode.")
 
 (defun cppcm--cmakelists-dot-txt (dir)
+  "Return full path of CMakeLists.txt in DIR."
   (concat (file-name-as-directory dir) "CMakeLists.txt"))
 
 (defun cppcm--exe-hashkey (dir)
+  "Create hash key of executable by appending DIR."
   (let (k)
     (setq k (concat (file-name-as-directory dir) "exe-full-path"))
     k))
 
 (defun cppcm--flags-hashkey (dir)
+  "Create hash key of compiler flags by appending DIR."
   (let (k)
     (setq k (concat (file-name-as-directory dir) "cpp-flags"))
     k))
 
 (defun cppcm-share-str (msg)
+  "Copy MSG to `kill-ring' and clipboard."
   (kill-new msg)
   (with-temp-buffer
     (insert msg)
@@ -126,24 +129,25 @@ For example:
                              (cond
                               ((eq system-type 'cygwin) "putclip")
                               ((eq system-type 'darwin) "pbcopy")
-                              (t "xsel -ib")
-                              ))))
+                              (t "xsel -ib")))))
 
-(defun cppcm-readlines (FILE)
-    "Return a list of lines of a file at FILE."
+(defun cppcm-readlines (file)
+  "Return a list of lines of a file at FILE."
+  (with-temp-buffer
+    (insert-file-contents file)
+    (split-string (buffer-string) "\n" t)))
 
-    (with-temp-buffer
-            (insert-file-contents FILE)
-                (split-string (buffer-string) "\n" t)))
+(defun cppcm-parent-dir (d)
+  "Return parent directory of D."
+  (file-name-directory (directory-file-name d)))
 
-(defun cppcm-parent-dir (d) (file-name-directory (directory-file-name d)))
-
-(defun cppcm--query-var-from-lines (lines REGEX)
+(defun cppcm--query-var-from-lines (lines regex)
+  "Scan LINES to match REGEX."
   (if cppcm-debug (message "cppcm--query-var-from-lines called"))
   (let (v)
     (catch 'brk
       (dolist (l lines)
-        (when (string-match REGEX l)
+        (when (string-match regex l)
           (setq v (match-string 1 l))
           (throw 'brk t)
           )))
@@ -151,12 +155,12 @@ For example:
         (setq v (match-string 1 v)))
     v))
 
-(defun cppcm-query-var (FILE REGEX)
-  "Return the value `set (var value)'"
-  (cppcm--query-var-from-lines (cppcm-readlines FILE) REGEX))
+(defun cppcm-query-var (file regex)
+  "Return the string \"set (var value)\" from by scanning FILE (CMakeLists.txt) with REGEX."
+  (cppcm--query-var-from-lines (cppcm-readlines file) regex))
 
 (defun cppcm-query-var-from-last-matched-line (f re)
-  "Get the last matched line"
+  "Get the last matched line from file F with RE."
   (if cppcm-debug (message "cppcm-query-var-from-last-matched-line called"))
   (let (vlist lines)
     (setq lines (cppcm-readlines f))
@@ -168,9 +172,9 @@ For example:
     (if vlist (car (sort vlist #'string-lessp)))
     ))
 
-;; get all the possible targets
 (defun cppcm-query-targets (f)
-  "return '((target value))"
+  "Get all the possible targets.
+Return '((target value)) from F (CMakeLists.txt)"
   (let (vars lines)
     (setq lines (cppcm-readlines f))
     (dolist (l lines)
@@ -179,9 +183,9 @@ For example:
         ))
     vars))
 
-;; get all the possible targets
-;; @return matched line, use (match-string 2 line) to get results
 (defun cppcm-match-all-lines (f)
+  "Get all possible targets from F (CMakeLists.txt).
+Return matched line, use (match-string 2 line) to get results."
   (let ((vars ())
         lines)
     (setq lines (cppcm-readlines f))
@@ -190,11 +194,10 @@ For example:
         (if (string-match cppcm-cmake-target-regex l)
           (push l vars)
           )))
-    vars
-    ))
+    vars))
 
 (defun cppcm-query-match-line (f re)
-  "return match line"
+  "Return matched line from F (flags.make) with RE."
   (let (ml lines)
     (setq lines (cppcm-readlines f))
     (catch 'brk
@@ -206,22 +209,23 @@ For example:
     ml
     ))
 
-;; grep Project_SOURCE_DIR if it exists
-;; if Project_SOURCE_DIR does not exist, grep first what_ever_SOURCE_DIR
-;; the result is assume the root source directory,
-;; kind of hack
-;; Please enlighten me if you have better result
 (defun cppcm-get-root-source-dir (d)
+"Grep `Project_SOURCE_DIR' from build dir D if it exists.
+If `Project_SOURCE_DIR' does not exist, grep first `what_ever_SOURCE_DIR'.
+T result is assume the root source directory.  Kind of hack.
+Please enlighten me if you have better method."
   (let (rlt)
-    (setq rlt (cppcm-query-var-from-last-matched-line (concat d "CMakeCache.txt") "Project_SOURCE_DIR\:STATIC\=\\(.*\\)"))
-    (if (not rlt)
-        (setq rlt (cppcm-query-var-from-last-matched-line (concat d "CMakeCache.txt") "[[:word:]]+_SOURCE_DIR\:STATIC\=\\(.*\\)")))
-    rlt
-    ))
+    (setq rlt (cppcm-query-var-from-last-matched-line (concat d "CMakeCache.txt")
+                                                      "Project_SOURCE_DIR\:STATIC\=\\(.*\\)"))
+    (unless rlt
+      (setq rlt
+            (cppcm-query-var-from-last-matched-line (concat d "CMakeCache.txt")
+                                                    "[[:word:]]+_SOURCE_DIR\:STATIC\=\\(.*\\)")))
+    rlt))
 
 (defun cppcm-get-dirs ()
-  "search from current directory to the parent to locate build directory
-return (found possible-build-dir build-dir src-dir)"
+  "Search from cwd to parent to find build directory.
+Return (found possible-build-dir build-dir src-dir)."
   (if cppcm-debug (message "cppcm-get-dirs called"))
   (let ((crt-proj-dir (file-name-as-directory (file-name-directory buffer-file-name)))
         (i 0)
@@ -255,19 +259,20 @@ return (found possible-build-dir build-dir src-dir)"
     (if cppcm-debug (message "(cppcm-get-dirs)=%s" rlt))
     rlt))
 
-(defun cppcm--contains-variable-name (VALUE start)
-  (string-match "\$\{\\([^}]+\\)\}" VALUE start))
+(defun cppcm--contains-variable-name (value start)
+  "Sub-string of VALUE from START looks like a CMake variable?"
+  (string-match "\$\{\\([^}]+\\)\}" value start))
 
-(defun cppcm--decompose-var-value (VALUE)
-  "return the list by decomposing VALUE"
+(defun cppcm--decompose-var-value (value)
+  "Return the list by decomposing VALUE."
   (let (rlt (start 0) (non-var-idx 0) var-name substr)
-    ;; (setq rlt (split-string VALUE "\$\{\\|\}"))
+    ;; (setq rlt (split-string value "\$\{\\|\}"))
     ;; charater scan might be better
-    (while (numberp (setq start (cppcm--contains-variable-name VALUE start)))
-      (setq var-name (match-string 1 VALUE))
+    (while (numberp (setq start (cppcm--contains-variable-name value start)))
+      (setq var-name (match-string 1 value))
       ;; move the index
       (when (< non-var-idx start)
-        (setq substr (substring VALUE non-var-idx start))
+        (setq substr (substring value non-var-idx start))
 
         (add-to-list 'rlt substr t)
         (add-to-list 'rlt (make-symbol var-name) t)
@@ -277,24 +282,24 @@ return (found possible-build-dir build-dir src-dir)"
       (setq start (+ start 3 (length var-name)))
       (setq non-var-idx start)
       )
-    ;; (setq rlt (list VALUE))
+    ;; (setq rlt (list value))
     rlt))
 
 (defun cppcm-guess-var (var lines)
-  "get the value of VAR from LINES"
+  "Get the value of VAR from LINES."
   (let (rlt
         value
-        REGEX
+        regex
         mylist)
     (cond
      ((string= var "PROJECT_NAME")
-      (setq REGEX (concat "\s*project(\s*\\([^ ]+\\)\s*)")))
+      (setq regex (concat "\s*project(\s*\\([^ ]+\\)\s*)")))
      (t
-      (setq REGEX (concat "\s*set(\s*" var "\s+\\([^ ]+\\)\s*)" ))
+      (setq regex (concat "\s*set(\s*" var "\s+\\([^ ]+\\)\s*)" ))
       ))
     ;; if rlt contains "${", we first de-compose the rlt into a list:
     ;; TODO else we just return the value
-    (setq value (cppcm--query-var-from-lines lines REGEX))
+    (setq value (cppcm--query-var-from-lines lines regex))
     (cond
      ((numberp (cppcm--contains-variable-name value 0))
       (setq mylist (cppcm--decompose-var-value value))
@@ -306,30 +311,30 @@ return (found possible-build-dir build-dir src-dir)"
          (t
           (setq rlt (concat rlt item))
           ))
-        )
-      )
-     (t (setq rlt value))
-     )
+        ))
+     (t (setq rlt value)))
+
     rlt))
 
 (defun cppcm-strip-prefix (prefix str)
-  "strip prefix from str"
+  "Strip PREFIX from STR."
   (if (string-equal (substring str 0 (length prefix)) prefix)
       (substring str (length prefix))
     str)
   )
 
 (defun cppcm--extract-include-directory (str)
+  "Remove `-I' from STR."
   (when (string-match "^-I[ \t]*" str)
     (setq str (replace-regexp-in-string "^-I[ \t]*" "" str))
     (setq str (cppcm-trim-string str "\""))))
 
 (defun cppcm-trim-string (string trim-str)
-  "Remove white spaces in beginning and ending of STRING.
-White space here is any of: space, tab, emacs newline (line feed, ASCII 10)."
+  "Stripp STRING from TRIM-STR."
   (replace-regexp-in-string (concat "^" trim-str) "" (replace-regexp-in-string (concat trim-str "$") "" string)))
 
 (defun cppcm-trim-compiling-flags (cppflags)
+  "Formlize CPPFLAGS.  `gcc' may use \"-isystem\", for example."
   (if cppcm-debug (message "cppcm-trim-compiling-flags called => %s" cppflags))
   (let (tks
         (next-tk-is-included-dir nil)
@@ -359,7 +364,8 @@ White space here is any of: space, tab, emacs newline (line feed, ASCII 10)."
   ))
 
 (defun cppcm--find-physical-lib-file (base-exe-name)
-  "a library binary file could have different file extension"
+  "A library binary file could have different file extension.
+Try to find it based on BASE-EXE-NAME."
   (if cppcm-debug (message "cppcm--find-physical-lib-file called => %s" base-exe-name))
   (let (p)
     (if base-exe-name
@@ -408,14 +414,14 @@ White space here is any of: space, tab, emacs newline (line feed, ASCII 10)."
               (if cppcm-debug (message "cppcm-get-executable-full-path-callback will be called! => %s %s %s" p type tgt-name))
               (setq p (funcall cppcm-get-executable-full-path-callback p type tgt-name))
               (when (not (file-exists-p p))
-                (message "Executable missing! I give up! %" p)
+                (message "Executable missing! I give up! %s" p)
                 (setq p nil)))
             ))
 
       ;; handle add_library
       (unless (setq p (cppcm--find-physical-lib-file base-exe-name))
         (when cppcm-get-executable-full-path-callback
-          (if cppcm-debug (message "cppcm-get-executable-full-path-callback will be called! => %s %s %s" base-exe-name type tgt-name))
+          (if cppcm-debug (message "cppcm-get-executable-full-path-callback called! => %s %s %s" base-exe-name type tgt-name))
           (setq p (funcall cppcm-get-executable-full-path-callback
                             base-exe-name
                             type
@@ -570,8 +576,8 @@ Require the project be compiled successfully at least once."
 
 ;;;###autoload
 (defun cppcm-get-exe-path-current-buffer ()
-  (if cppcm-debug (message "cppcm-get-exe-path-current-buffer called"))
   (interactive)
+  (if cppcm-debug (message "cppcm-get-exe-path-current-buffer called"))
   (let (exe-path
         dir)
     (setq dir (cppcm--guess-dir-containing-cmakelists-dot-txt))
@@ -651,7 +657,7 @@ Require the project be compiled successfully at least once."
 ;;;###autoload
 (defun cppcm-version ()
   (interactive)
-  (message "0.5.2"))
+  (message "0.5.3"))
 
 ;;;###autoload
 (defun cppcm-compile (&optional prefix)
@@ -680,9 +686,10 @@ by customize `cppcm-compile-list'."
 ;;;###autoload
 (defun cppcm-reload-all ()
   "Reload and reproduce everything"
-  (if cppcm-debug (message "cppcm-reload-all called"))
   (interactive)
-  (let (dirs )
+  (if cppcm-debug (message "cppcm-reload-all called"))
+
+  (let (dirs)
     (when buffer-file-name
 
       (setq cppcm-hash nil)
@@ -712,8 +719,7 @@ by customize `cppcm-compile-list'."
         )
        (t
         (message "Build directory is missing! Create the directory, run cmake and make inside of it.")))
-      )
-    )
+      ))
 
   (if cppcm-debug (message "cppcm-include-dirs=%s" cppcm-include-dirs))
 
