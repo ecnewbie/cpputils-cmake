@@ -333,30 +333,39 @@ White space here is any of: space, tab, emacs newline (line feed, ASCII 10)."
   (if cppcm-debug (message "cppcm-trim-compiling-flags called => %s" cppflags))
   (let (tks
         (next-tk-is-included-dir nil)
-        (v ""))
+        (v (list "" "")))
     ;; consider following sample:
     ;; CXX_FLAGS = -I/Users/cb/wxWidgets-master/include -I"/Users/cb/projs/space nox"    -Wno-write-strings
     (setq tks (split-string (cppcm-trim-string cppflags "[ \t\n]*") "\s+-" t))
+    (let (first)
+      (setq first (nth 0 tks))
+      (if (and first (string= (substring first 0 1) "-"))
+               (setcar tks (substring (nth 0 tks) 1))))
 
     (if cppcm-debug (message "tks=%s" tks))
     ;; rebuild the arguments in one string, append double quote string
     (dolist (tk tks v)
-      (cond
-       ((and (> (length tk) 1) (string= (substring tk 0 2) "-I"))
-        (setq v (concat v " -I\"" (substring tk 2 (length tk)) "\"")))
+      (let ((v0 (nth 0 v)) (v1 (nth 1 v)))
+        (unless
+            (cond
+             ((and (> (length tk) 1) (string= (substring tk 0 2) "-I"))
+              (setq v0 (concat v0 " -I\"" (substring tk 2 (length tk)) "\"")))
 
-       ((string= (substring tk 0 1) "I")
-        (setq v (concat v " -I\"" (substring tk 1 (length tk)) "\"")))
+             ((string= (substring tk 0 1) "I")
+              (setq v0 (concat v0 " -I\"" (substring tk 1 (length tk)) "\"")))
 
-       ((and (> (length tk) 8) (string= (substring tk 0 8) "isystem "))
-        (setq v (concat v " -I\"" (substring tk 8 (length tk)) "\"")))
+             ((and (> (length tk) 8) (string= (substring tk 0 8) "isystem "))
+              (setq v0 (concat v0 " -I\"" (substring tk 8 (length tk)) "\"")))
 
-       ((and (> (length tk) 9) (string= (substring tk 0 9) "-isystem "))
-        (setq v (concat v " -I\"" (substring tk 9 (length tk)) "\"")))
-       ))
+             ((and (> (length tk) 9) (string= (substring tk 0 9) "-isystem "))
+              (setq v0 (concat v0 " -I\"" (substring tk 9 (length tk)) "\"")))
+             )
+          (setq v1 (concat v1 " -" tk)))
+        (setq v (list v0 v1))))
+    (if cppcm-debug (message "v=%s" v))
 
     v
-  ))
+    ))
 
 (defun cppcm--find-physical-lib-file (base-exe-name)
   "a library binary file could have different file extension"
@@ -470,16 +479,24 @@ Require the project be compiled successfully at least once."
               (setq queried-c-flags (cppcm-query-match-line flag-make "\s*\\(CX\\{0,2\\}_FLAGS\\)\s*=\s*\\(.*\\)"))
               )
         (setq is-c (if (string= (match-string 1 queried-c-flags) "C_FLAGS") "C" "CXX"))
-        (setq c-flags (cppcm-trim-compiling-flags (match-string 2 queried-c-flags)))
-        (setq queried-c-defines (cppcm-query-match-line flag-make "\s*\\(CX\\{0,2\\}_DEFINES\\)\s*=\s*\\(.*\\)"))
-        (when cppcm-debug
-          (message "queried-c-flags=%s" queried-c-flags)
-          (message "is-c=%s" is-c)
-          (message "c-flags=%s" c-flags)
-          (message "queried-c-defines=%s" queried-c-flags))
 
-        ;; just what ever preprocess flag we got
-        (setq c-defines (match-string 2 queried-c-defines))
+        (let (flags-list)
+          (setq flags-list (cppcm-trim-compiling-flags (match-string 2 queried-c-flags)))
+          (setq c-flags (nth 0 flags-list))
+          (setq queried-c-defines (cppcm-query-match-line flag-make "\s*\\(CX\\{0,2\\}_DEFINES\\)\s*=\s*\\(.*\\)"))
+          (setq queried-c-defines (concat queried-c-defines (nth 1 flags-list)))
+
+          ;; just what ever preprocess flag we got
+          (setq c-defines (match-string 2 queried-c-defines))
+          (setq c-defines (concat c-defines (nth 1 flags-list)))
+
+          (when cppcm-debug
+            (message "queried-c-flags=%s" queried-c-flags)
+            (message "is-c=%s" is-c)
+            (message "c-flags=%s" c-flags)
+            (message "c-defines=%s" c-defines)
+            (message "queried-c-defines=%s" queried-c-defines))
+          )
 
         (puthash (cppcm--flags-hashkey base-dir) (list c-flags c-defines) cppcm-hash)
 
